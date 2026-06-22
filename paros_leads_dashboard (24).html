@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>파로스 리드 대시보드</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f7f8fa; color: #1a1a1a; font-size: 14px; }
+  .topbar { background: #fff; border-bottom: 1px solid #e8e9eb; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .logo { font-size: 15px; font-weight: 600; }
+  .logo span { color: #5b4fcf; }
+  .badge-live { font-size: 11px; background: #eeedfb; color: #5b4fcf; border-radius: 20px; padding: 3px 10px; font-weight: 500; margin-left: 10px; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+  .last-updated { font-size: 12px; color: #888; }
+  .btn-refresh { font-size: 13px; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 7px 14px; cursor: pointer; color: #444; }
+  .btn-refresh:hover { background: #f5f5f5; }
+  .main { padding: 24px; max-width: 1300px; margin: 0 auto; }
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat { background: #fff; border: 1px solid #e8e9eb; border-radius: 10px; padding: 14px 18px; }
+  .stat-label { font-size: 12px; color: #888; margin-bottom: 6px; }
+  .stat-val { font-size: 26px; font-weight: 600; }
+  .stat-val.purple { color: #5b4fcf; }
+  .stat-val.green { color: #2e7d32; }
+  .stat-val.blue { color: #1565c0; }
+  .table-card { background: #fff; border: 1px solid #e8e9eb; border-radius: 12px; overflow: hidden; }
+  .table-header { padding: 14px 18px; border-bottom: 1px solid #e8e9eb; }
+  .table-title { font-size: 14px; font-weight: 600; }
+  .table-count { font-size: 12px; color: #888; margin-left: 8px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { font-size: 12px; font-weight: 500; color: #888; padding: 10px 14px; text-align: left; border-bottom: 1px solid #f0f0f0; white-space: nowrap; background: #fafafa; }
+  td { padding: 10px 14px; border-bottom: 1px solid #f5f5f5; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafbff; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 20px; font-weight: 500; }
+  .badge-mkt { background: #e3f2fd; color: #1565c0; }
+  .badge-none { background: #f0f0f0; color: #888; }
+  .badge-joined { background: #eeedfb; color: #3d33a8; }
+  .badge-contacted { background: #e8f5e9; color: #2e7d32; }
+  .badge-not { background: #f0f0f0; color: #888; }
+  .check-cell { display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .toggle { position: relative; width: 36px; height: 20px; cursor: pointer; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: #ddd; border-radius: 20px; transition: 0.2s; }
+  .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.2s; }
+  .toggle input:checked + .slider { background: #5b4fcf; }
+  .toggle input:checked + .slider.green { background: #2e7d32; }
+  .toggle input:checked + .slider:before { transform: translateX(16px); }
+  .th-sms { background: #f0f9f0; color: #2e7d32; }
+  .th-call { background: #f0f9f0; color: #2e7d32; }
+  .th-joined { background: #f0eeff; color: #5b4fcf; }
+  .col-divider { border-left: 2px solid #efefef; }
+  .memo-input { width: 100%; border: 1px solid #e8e9eb; border-radius: 6px; padding: 5px 8px; font-size: 12px; font-family: inherit; color: #1a1a1a; background: #fff; resize: none; outline: none; }
+  .memo-input:focus { border-color: #5b4fcf; }
+  .memo-input::placeholder { color: #ccc; }
+  .loading { display: flex; align-items: center; justify-content: center; padding: 60px; color: #888; gap: 10px; flex-direction: column; }
+  .spinner { width: 24px; height: 24px; border: 2px solid #e0e0e0; border-top-color: #5b4fcf; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-msg { color: #c62828; padding: 40px; text-align: center; line-height: 1.8; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div style="display:flex;align-items:center;">
+    <span class="logo">파로스 <span>리드</span></span>
+    <span class="badge-live">실시간</span>
+  </div>
+  <div class="topbar-right">
+    <span class="last-updated" id="last-updated"></span>
+    <button class="btn-refresh" onclick="loadAll()">↻ 새로고침</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="stats">
+    <div class="stat"><div class="stat-label">전체 제출</div><div class="stat-val" id="s-total">-</div></div>
+    <div class="stat"><div class="stat-label">가입 완료</div><div class="stat-val purple" id="s-joined">-</div></div>
+    <div class="stat"><div class="stat-label">미가입</div><div class="stat-val" id="s-not">-</div></div>
+    <div class="stat"><div class="stat-label">문자 발송</div><div class="stat-val blue" id="s-sms">-</div></div>
+    <div class="stat"><div class="stat-label">마케팅 동의</div><div class="stat-val green" id="s-mkt">-</div></div>
+  </div>
+  <div class="table-card">
+    <div class="table-header">
+      <span class="table-title">자료 다운로드 신청자</span>
+      <span class="table-count" id="table-count"></span>
+    </div>
+    <div class="table-wrap">
+      <div class="loading" id="loading"><div class="spinner"></div><span>데이터 불러오는 중...</span></div>
+      <table id="main-table" style="display:none;">
+        <thead>
+          <tr>
+            <th style="width:70px;">제출일시</th>
+            <th style="min-width:70px;">성함</th>
+            <th>회사명</th>
+            <th>이메일</th>
+            <th>연락처</th>
+            <th style="text-align:center;">마케팅</th>
+            <th style="text-align:center;" class="col-divider th-sms">문자발송</th>
+            <th style="text-align:center;" class="th-call">전화</th>
+            <th style="text-align:center;" class="th-joined">가입여부</th>
+            <th style="min-width:160px;">메모</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="error-msg" id="error-msg" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TALLY_KEY = 'tly-tMwvyveHjGDnuFqWZZa6tLWdPltdEt7j';
+const FORM_ID = 'VLDArM';
+const SHEET_ID = '1bYTQ0o0rRR9dwHbxkNQ9plH_HhVYEggSCz7X3EmBsxc';
+const SA_EMAIL = 'id-25-896@genuine-plate-499806-p3.iam.gserviceaccount.com';
+const PKEY = `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCjEm+EvnjHOt5G
+F9mSNaFzF3SFJgeW/AEtkJaIwFV271GxYXDuJeH+pVxw0vNN/2ml/vCD08VMbeW6
+AzxLOpXZJ6A91mRrGumOgAR4/XZD5L8a5igFHk43e88Y8Gp7R+dAtZAShgEYpIbh
+bCAHM8hyJ7tKCG5Q85oK3CWq5k827ocQQF9tCj1MF5uwASrdavRHSGytUKUbWufq
+T8IRsu54q7/pdVxKkPkOx9u/8O0oS959+XleCtbzQlW6AXr6ZH4sQBUqt1flLrrJ
+R5HtRmdW9y3CLMkcnbNdY5/GiEWh6dDvFOrmzOxlVAEvd9qWEo3B/fwP9O2Z5TVG
+sPEWjv93AgMBAAECggEACgvZNfbcDv4X8n6Gp2TJcQM5aPiKUClvUyTMuVkMCts8
+j65+nBVWYm9CjirY1W3OTu0xWRXDWm2M0RRg8wuFbs7rptOd9SE/0UkevWt0DUO6
+6EfUoFgZHn7wp8sr7DNmUky9Nv7tc1yzeJDGOltc1nePKMTzMuaHD3M3mNs+dxZK
+qcJDuRBO9EJkM1E8TzEvORKFx8/Je0O6S8OngHiMxcEIA6rTc0kLzHZi32T4mBE6
+NPaghP5XkKndm6YL1uJ/La83v2rgVNNyyaaD/7Y5/0ouvxYq7eobLv9/gy9Le+ii
+poZAa8RLuIikNEn6/vpCMPvUjcUy9g+yfEarlH3NOQKBgQDRzTNJ8mKgLRit3dI/
+hAZrtUjudPQ8ignsE1dSIrQxByuiL5aD52ABok0+TDdybnUcbcBElXcvd/lWl7A0
+pAAxh9QXXz6rkxOEY9AQxjWz3gz/RiP4K7nye/wp7dBDHqw/hve990EDuQcB3PK5
+9sbxHTqYP4dTkFvKmdjKTJrgDwKBgQDG+wbnLBffR86d0liJfL3gl7h89mo2WN9D
+E47BRmV5KwGCh0BS6WOvhXL0E/XXnNeYvheSE8C7W99AJ9LwnhUJ1UAutCFZDm9Q
+EcCR6LEKXl4+QWPFPMisTHwRBSWIQPlfHa6ZhEAj11ykuF6PC7PnQbDPR73Lil3q
+4ggggGECGQKBgQCsvmFxjHKqYhdE6TS4+XLz8lM3i/KheiMLTy2BwnNNPxMtOjOb
+LcI99i3VkpnAzbP9kVxS3CJDYmxZYRJDdZl3Lthx2glW6gWS50Ak357OF5HqCg2J
+xC8Zuf55Y4csDLBUqkOIFXJhp1JetVbhyZAqbR+WxhAdvOnnWl9GymZm/wKBgAuY
+VzejZyS4v36M4mHopfvve220wk22chQrkJcMrh8YdXcQwJvUQ93XjfJRM3NEDYA2
+G5OEmSeR2/mWGIGzBJDVH29ZSdQxtiTZU/psr9xl0WIZV2IH/72im1w2i5BcEOwN
+A76oaUBtbVWf9MqrKOmh91as3I9+2ag1UbnrITwJAoGAMHIpP9l0ILhW3q1XbWw3
+4KR6Nf5O5dnzu38EelqcYMKXy9Hnz6lQwUhlVtiUAl4phycF3gwF8gMXkfvXpESA
+2N/8ZTSxSbCVxmAFj6D6O8eHfQtZPnY6wv1cINn7njOTU+dLITO4r6jRxf/Sk/F0
+cYkCVAzKC4GaDnk04WzbaiQ=
+-----END PRIVATE KEY-----`;
+
+const EXCLUDE = ['ewchoe@finger.co.kr','eunu421@naver.com','test@test.test','ymj@finger.co.kr','sj.park@finger.co.kr','sanghee84@finger.co.kr'];
+const CUTOFF = new Date('2026-06-17T00:00:00Z');
+
+let subs = [];
+let state = {};
+let gToken = null;
+
+async function getToken() {
+  const now = Math.floor(Date.now() / 1000);
+  const b64 = o => btoa(JSON.stringify(o)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+  const hdr = b64({alg:'RS256',typ:'JWT'});
+  const pay = b64({iss:SA_EMAIL,scope:'https://www.googleapis.com/auth/spreadsheets',aud:'https://oauth2.googleapis.com/token',exp:now+3600,iat:now});
+  const si = `${hdr}.${pay}`;
+  const pem = PKEY.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\n/g,'');
+  const der = Uint8Array.from(atob(pem), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('pkcs8', der.buffer, {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'}, false, ['sign']);
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(si));
+  const b64s = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:`grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${si}.${b64s}`
+  });
+  const d = await res.json();
+  if (!d.access_token) throw new Error('Google 인증 실패');
+  return d.access_token;
+}
+
+async function sheetRead(token) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/%EC%8B%9C%ED%8A%B81!A:E`;
+  const r = await fetch(url, {headers:{Authorization:`Bearer ${token}`}});
+  const d = await r.json();
+  if (!r.ok) throw new Error('Sheets 읽기 실패: ' + JSON.stringify(d));
+  const map = {};
+  (d.values || []).forEach(row => {
+    if (row[0]) map[row[0]] = {joined: row[1]==='TRUE', sms: row[2]==='TRUE', call: row[3]==='TRUE', memo: row[4]||''};
+  });
+  return map;
+}
+
+async function sheetSave(token, id, s) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/%EC%8B%9C%ED%8A%B81!A:A`;
+  const r = await fetch(url, {headers:{Authorization:`Bearer ${token}`}});
+  const d = await r.json();
+  const rows = d.values || [];
+  const idx = rows.findIndex(row => row[0] === id);
+  const vals = [[id, s.joined?'TRUE':'FALSE', s.sms?'TRUE':'FALSE', s.call?'TRUE':'FALSE', s.memo||'']];
+
+  if (idx === -1) {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/%EC%8B%9C%ED%8A%B81!A:E:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
+      method:'POST', headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body: JSON.stringify({values: vals})
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(JSON.stringify(e)); }
+  } else {
+    const row = idx + 1;
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/%EC%8B%9C%ED%8A%B81!A${row}:E${row}?valueInputOption=RAW`, {
+      method:'PUT', headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body: JSON.stringify({values: vals})
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(JSON.stringify(e)); }
+  }
+}
+
+// 값 추출 헬퍼
+function extractVal(v) {
+  if (v === null || v === undefined) return '';
+  if (Array.isArray(v)) return v.join(', ');
+  return String(v);
+}
+
+function checkAgree(v) {
+  if (Array.isArray(v)) return v.some(x => x === '동의합니다' || x === true || x === 'true');
+  return v === '동의합니다' || v === true || v === 'true';
+}
+
+async function loadTally() {
+  const r = await fetch(`https://api.tally.so/forms/${FORM_ID}/submissions?limit=100`, {
+    headers:{Authorization:`Bearer ${TALLY_KEY}`}
+  });
+  if (!r.ok) throw new Error('Tally API 오류: ' + r.status);
+  const d = await r.json();
+
+  const qMap = {};
+  (d.questions||[]).forEach(q => { qMap[q.id] = q.title; });
+
+  const result = [];
+  for (const s of (d.submissions||[])) {
+    // 날짜 필터
+    if (new Date(s.submittedAt) < CUTOFF) continue;
+
+    // responses에서 ans 맵 만들기
+    const ans = {};
+    for (const resp of (s.responses||[])) {
+      const title = qMap[resp.questionId] || resp.questionId || '';
+      ans[title] = resp.formattedAnswer;
+    }
+
+    const email = extractVal(ans['이메일 주소']).toLowerCase().trim();
+    if (EXCLUDE.includes(email)) continue;
+
+    const name = extractVal(ans['성함']).trim();
+    if (name.toLowerCase() === 'test') continue;
+
+    // 마케팅 동의 키 찾기
+    const mktKey = Object.keys(ans).find(k => k.includes('마케팅') && k.includes('동의합니다'));
+    const mktKey2 = Object.keys(ans).find(k => k.includes('마케팅') && !k.includes('동의합니다'));
+    const mkt = mktKey ? checkAgree(ans[mktKey]) : (mktKey2 ? checkAgree(ans[mktKey2]) : false);
+
+    result.push({
+      id: s.id,
+      at: s.submittedAt,
+      name: name || '-',
+      company: extractVal(ans['회사명']).trim() || '-',
+      email: extractVal(ans['이메일 주소']).trim() || '-',
+      phone: extractVal(ans['연락처']).trim() || '-',
+      mkt,
+    });
+  }
+  return result;
+}
+
+function fmtDate(str) {
+  if (!str) return '-';
+  const d = new Date(str);
+  return `${d.getMonth()+1}/${d.getDate()}\n${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function render() {
+  const tbody = document.getElementById('tbody');
+  document.querySelectorAll('.memo-input').forEach(el => {
+    const id = el.dataset.id;
+    if (id && state[id]) state[id].memo = el.value;
+  });
+  tbody.innerHTML = '';
+
+  const total = subs.length;
+  const joined = subs.filter(s => state[s.id]?.joined).length;
+  const smsCnt = subs.filter(s => state[s.id]?.sms).length;
+  const mktCnt = subs.filter(s => s.mkt).length;
+  document.getElementById('s-total').textContent = total;
+  document.getElementById('s-joined').textContent = joined;
+  document.getElementById('s-not').textContent = total - joined;
+  document.getElementById('s-sms').textContent = smsCnt;
+  document.getElementById('s-mkt').textContent = mktCnt;
+  document.getElementById('table-count').textContent = `총 ${total}건`;
+
+  subs.forEach(s => {
+    const st = state[s.id] || {joined:false, sms:false, call:false, memo:''};
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-size:12px;color:#888;white-space:pre-line;line-height:1.4;">${fmtDate(s.at)}</td>
+      <td style="font-weight:600;white-space:nowrap;">${s.name}</td>
+      <td style="white-space:nowrap;">${s.company}</td>
+      <td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${s.email}">${s.email}</td>
+      <td style="font-size:12px;">${s.phone}</td>
+      <td style="text-align:center;"><span class="badge ${s.mkt?'badge-mkt':'badge-none'}">${s.mkt?'동의':'-'}</span></td>
+      <td style="text-align:center;" class="col-divider">
+        <div class="check-cell">
+          <label class="toggle"><input type="checkbox" ${st.sms?'checked':''} onchange="toggle('${s.id}','sms',this.checked)"><span class="slider green"></span></label>
+          <span class="badge ${st.sms?'badge-contacted':'badge-not'}">${st.sms?'발송':'미발송'}</span>
+        </div>
+      </td>
+      <td style="text-align:center;">
+        <div class="check-cell">
+          <label class="toggle"><input type="checkbox" ${st.call?'checked':''} onchange="toggle('${s.id}','call',this.checked)"><span class="slider green"></span></label>
+          <span class="badge ${st.call?'badge-contacted':'badge-not'}">${st.call?'완료':'미완료'}</span>
+        </div>
+      </td>
+      <td style="text-align:center;">
+        <div class="check-cell">
+          <label class="toggle"><input type="checkbox" ${st.joined?'checked':''} onchange="toggle('${s.id}','joined',this.checked)"><span class="slider"></span></label>
+          <span class="badge ${st.joined?'badge-joined':'badge-not'}">${st.joined?'가입':'미가입'}</span>
+        </div>
+      </td>
+      <td><textarea class="memo-input" rows="1" data-id="${s.id}" placeholder="메모..." onblur="saveMemo('${s.id}',this.value)">${st.memo}</textarea></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function toggle(id, field, val) {
+  if (!state[id]) state[id] = {joined:false, sms:false, call:false, memo:''};
+  const memoEl = document.querySelector(`.memo-input[data-id="${id}"]`);
+  if (memoEl) state[id].memo = memoEl.value;
+  state[id][field] = val;
+  render();
+  try {
+    if (!gToken) gToken = await getToken();
+    await sheetSave(gToken, id, state[id]);
+  } catch(e) {
+    console.error(e);
+    alert('저장 실패: ' + e.message);
+  }
+}
+
+async function saveMemo(id, val) {
+  if (!state[id]) state[id] = {joined:false, sms:false, call:false, memo:''};
+  state[id].memo = val;
+  const el = document.querySelector(`.memo-input[data-id="${id}"]`);
+  if (el) el.style.borderColor = '#f0a500';
+  try {
+    if (!gToken) gToken = await getToken();
+    await sheetSave(gToken, id, state[id]);
+    if (el) { el.style.borderColor = '#2e7d32'; setTimeout(()=>{ el.style.borderColor=''; },1500); }
+  } catch(e) {
+    console.error(e);
+    if (el) el.style.borderColor = '#c62828';
+    alert('메모 저장 실패: ' + e.message);
+  }
+}
+
+async function loadAll() {
+  document.getElementById('loading').style.display = 'flex';
+  document.getElementById('main-table').style.display = 'none';
+  document.getElementById('error-msg').style.display = 'none';
+  try {
+    gToken = await getToken();
+    const [tallyData, sheetData] = await Promise.all([loadTally(), sheetRead(gToken)]);
+    subs = tallyData;
+    state = sheetData;
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('main-table').style.display = 'table';
+    render();
+    const now = new Date();
+    document.getElementById('last-updated').textContent = `최근 업데이트: ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  } catch(e) {
+    console.error(e);
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-msg').style.display = 'block';
+    document.getElementById('error-msg').textContent = '오류: ' + e.message;
+  }
+}
+
+loadAll();
+</script>
+</body>
+</html>
