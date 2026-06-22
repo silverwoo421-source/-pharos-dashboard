@@ -238,7 +238,7 @@ async function loadTally() {
     const ans = {};
     for (const resp of (s.responses||[])) {
       const title = qMap[resp.questionId] || resp.questionId || '';
-      ans[title] = resp.formattedAnswer;
+      ans[title] = (resp.answer !== undefined && resp.answer !== null) ? resp.answer : resp.formattedAnswer;
     }
 
     const email = extractVal(ans['이메일 주소']).toLowerCase().trim();
